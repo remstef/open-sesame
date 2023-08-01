@@ -105,7 +105,7 @@ class SentenceAnnotation(object):
 
 class FrameAnnotation(object):
 
-    def __init__(self, lu, frame, sent):
+    def __init__(self, lu, frame, sent, frameid='', luid=''):
         self.lu = lu
         self.frame = frame
         self.sent = sent
@@ -113,6 +113,8 @@ class FrameAnnotation(object):
         self.foundtarget = False
         self.fe = {}
         self.foundfes = False
+        self.frameid = frameid
+        self.luid = luid
 
     def add_fe(self, offset, arglabel, logger):
         try:

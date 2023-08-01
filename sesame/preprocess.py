@@ -66,12 +66,19 @@ totsents = numsentsreused = fspno = numlus = 0.0
 isfirst = isfirstsent = True
 
 
-def write_to_conll(outf, fsp, firstex, sentid):
+def write_to_conll(outf, fsp, firstex, sentid, sentenceplain='', framenet_sentenceid='-1'):
     mode = "a"
     if firstex:
         mode = "w"
 
     with codecs.open(outf, mode, "utf-8") as outf:
+        outf.write(f'# SID={framenet_sentenceid} \n')  # SID
+        outf.write(f'# TEXT={sentenceplain} \n')  # plain sentence
+        outf.write(f'# LU={fsp.lu} \n')  # LU (Target)
+        outf.write(f'# LUID={fsp.luid} \n')  # LUID (Target)
+        outf.write(f'# FRAMENAME={fsp.frame} \n')  # Frame Name
+        outf.write(f'# FRAMEID={fsp.frame} \n')  # Frame ID
+
         for i in range(fsp.sent.size()):
             token, postag, nltkpostag, nltklemma, lu, frm, role = fsp.info_at_idx(i)
 
@@ -89,12 +96,12 @@ def write_to_conll(outf, fsp, firstex, sentid):
         outf.close()
 
 
-def write_to_sent_file(outsentf, sentence, isfirstsent):
+def write_to_sent_file(outsentf, sentence, isfirstsent, sentenceid='-1', framemetadata=[]):
     mode = "a"
     if isfirstsent: mode = "w"
 
     with codecs.open(outsentf, mode, "utf-8") as outf:
-        outf.write(sentence + "\n")  # end of sentence
+        outf.write(sentenceid + '\t' + sentence + '\t' + str(framemetadata) + "\n")  # end of sentence
         outf.close()
 
 
@@ -108,12 +115,12 @@ def process_xml_labels(label, layertype):
     return (st, en)
 
 
-def process_sent(sent, outsentf, isfirstsent):
+def process_sent(sent, outsentf, isfirstsent, sentenceid='-1', framemetadata=[]):
     senttext = ""
     for t in sent.findall('fn:text', ns):  # not a real loop
         senttext = t.text
 
-    write_to_sent_file(outsentf, senttext, isfirstsent)
+    write_to_sent_file(outsentf, senttext, isfirstsent, sentenceid, framemetadata)
     sentann = SentenceAnnotation(senttext)
 
     for anno in sent.findall('fn:annotationSet', ns):
@@ -126,7 +133,7 @@ def process_sent(sent, outsentf, isfirstsent):
                     sentann.add_postag(label.attrib["name"])
                 if sentann.normalize_tokens(logger) is None:
                     logger.write("\t\tSkipping: incorrect tokenization\n")
-                    return
+                    return None, None
                 break
         if sentann.foundpos:
             break
@@ -134,8 +141,8 @@ def process_sent(sent, outsentf, isfirstsent):
     if not sentann.foundpos:
         # TODO do some manual tokenization
         logger.write("\t\tSkipping: missing POS tags and hence tokenization\n")
-        return
-    return sentann
+        return None, None
+    return sentann, senttext
 
 
 def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, corpus):
@@ -158,12 +165,17 @@ def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, c
                 if anno.attrib["status"] == "UNANN" and "test" not in corpus: # keep the unannotated frame-elements only for test, to enable comparison
                     continue
                 lex_unit = anno.attrib["luName"]
-                frame = anno.attrib["frameName"]
-                if frame == "Test35": continue # bogus frame
+                framename = anno.attrib["frameName"]
+                frameid = str(anno.attrib["frameID"])
+                lex_unit_id = str(anno.attrib["luID"])
+                if framename == "Test35": continue # bogus frame
             else:
                 continue
-            logger.write("\tannotation: " + str(anno_id) + "\t" + frame + "\t" + lex_unit + "\n")
-        fsp = FrameAnnotation(lex_unit, frame, sentann)
+            logger.write("\tannotation: " + str(anno_id) + "\t" + framename + "\t" + lex_unit + "\n")
+        else:
+            framename = frame
+            fsp = FrameAnnotation(lex_unit, framename, sentann)
+        fsp = FrameAnnotation(lex_unit, framename, sentann, frameid, lex_unit_id)
 
         for layer in anno.findall('fn:layer', ns):  # not a real loop
             layertype = layer.attrib["name"]
@@ -223,7 +235,9 @@ def get_annoids(filelist, outf, outsentf):
         root = tree.getroot()
         for sentence in root.iter('{http://framenet.icsi.berkeley.edu}sentence'):
             numsents += 1
-            logger.write("sentence:\t" + str(sentence.attrib["ID"]) + "\n")
+            sentenceid = str(sentence.attrib["ID"])
+            logger.write("sentence:\t" + sentenceid + "\n")
+            frameannometadata = [ ]
             for annotation in sentence.iter('{http://framenet.icsi.berkeley.edu}annotationSet'):
                 annotation_id = annotation.attrib["ID"]
                 if annotation_id == "2019791" and VERSION == "1.5":
@@ -231,8 +245,15 @@ def get_annoids(filelist, outf, outsentf):
                     continue
                 if "luName" in annotation.attrib and "frameName" in annotation.attrib:
                     annos.append(annotation.attrib["ID"])
+                frameannometadata_i = { }
+                for frameannometadata_key in ['luID', 'luName', 'frameID', 'frameName']:
+                    if frameannometadata_key in annotation.attrib:
+                        frameannometadata_i[frameannometadata_key] = str(annotation.attrib[frameannometadata_key])
+                if len(frameannometadata_i):
+                    frameannometadata.append(frameannometadata_i)
+                # luID="4654" luName="December.n" frameID="229" frameName="Calendric_unit" 
             # get the tokenization and pos tags for a sentence
-            sentann = process_sent(sentence, outsentf, isfirstsentex)
+            sentann, senttext = process_sent(sentence, outsentf, isfirstsentex, sentenceid, frameannometadata)
             isfirstsentex = False
             if sentann is None:
                 invalidsents += 1
@@ -247,7 +268,7 @@ def get_annoids(filelist, outf, outsentf):
                 repeated += 1
             for fsp in list(fsps.values()):
                 sents.add(sentann.text)
-                write_to_conll(outf, fsp, isfirstex, numsents)
+                write_to_conll(outf, fsp, isfirstex, numsents, senttext, f'{sentenceid} ({tfname})')
                 sizes[outf] += 1
                 isfirstex = False
         xml_file.close()
@@ -302,7 +323,7 @@ def process_lu_xml(lufname, all_exemplars, dev_annos, test_annos):
         sent_id = int(sent.attrib["ID"])
         logger.write("sentence:\t" + str(sent_id) + "\n")
 
-        sentann = process_sent(sent, trainsentf, isfirstsent)
+        sentann, senttext = process_sent(sent, trainsentf, isfirstsent, sent_id, {})
         isfirstsent = False
 
         if sentann is None:
@@ -356,7 +377,7 @@ def process_exemplars(dev_annos, test_annos):
     isfirst = True
     for write_id, sentid in enumerate(sorted(all_exemplars), 1):
         for fsp_ in all_exemplars[sentid]:
-            write_to_conll(trainf, fsp_, isfirst, sentid=write_id)
+            write_to_conll(trainf, fsp_, isfirst, sentid=write_id, sentenceplain='Aaa', framenet_sentenceid=sentid)
             isfirst = False
 
     sys.stderr.write("\n\n# total LU sents = %d \n" % (totsents))
