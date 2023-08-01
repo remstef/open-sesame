@@ -66,18 +66,19 @@ totsents = numsentsreused = fspno = numlus = 0.0
 isfirst = isfirstsent = True
 
 
-def write_to_conll(outf, fsp, firstex, sentid, sentenceplain='', framenet_sentenceid='-1'):
+def write_to_conll(outf, fsp, firstex, sentid, sentenceplain='', framenet_sentenceid='-1', source=''):
     mode = "a"
     if firstex:
         mode = "w"
 
     with codecs.open(outf, mode, "utf-8") as outf:
+        outf.write(f'# SOURCE={source} \n')  # Source File
         outf.write(f'# SID={framenet_sentenceid} \n')  # SID
         outf.write(f'# TEXT={sentenceplain} \n')  # plain sentence
         outf.write(f'# LU={fsp.lu} \n')  # LU (Target)
         outf.write(f'# LUID={fsp.luid} \n')  # LUID (Target)
         outf.write(f'# FRAMENAME={fsp.frame} \n')  # Frame Name
-        outf.write(f'# FRAMEID={fsp.frame} \n')  # Frame ID
+        outf.write(f'# FRAMEID={fsp.frameid} \n')  # Frame ID
 
         for i in range(fsp.sent.size()):
             token, postag, nltkpostag, nltklemma, lu, frm, role = fsp.info_at_idx(i)
@@ -268,7 +269,7 @@ def get_annoids(filelist, outf, outsentf):
                 repeated += 1
             for fsp in list(fsps.values()):
                 sents.add(sentann.text)
-                write_to_conll(outf, fsp, isfirstex, numsents, senttext, f'{sentenceid} ({tfname})')
+                write_to_conll(outf, fsp, isfirstex, numsents, senttext, framenet_sentenceid=sentenceid, source=tfname)
                 sizes[outf] += 1
                 isfirstex = False
         xml_file.close()
@@ -377,7 +378,7 @@ def process_exemplars(dev_annos, test_annos):
     isfirst = True
     for write_id, sentid in enumerate(sorted(all_exemplars), 1):
         for fsp_ in all_exemplars[sentid]:
-            write_to_conll(trainf, fsp_, isfirst, sentid=write_id, sentenceplain='Aaa', framenet_sentenceid=sentid)
+            write_to_conll(trainf, fsp_, isfirst, sentid=write_id, sentenceplain='', framenet_sentenceid='', source='')
             isfirst = False
 
     sys.stderr.write("\n\n# total LU sents = %d \n" % (totsents))
