@@ -172,10 +172,10 @@ def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, c
             else:
                 continue
             logger.write("\tannotation: " + str(anno_id) + "\t" + framename + "\t" + lex_unit + "\n")
+            fsp = FrameAnnotation(lex_unit, framename, sentann, frameid, lex_unit_id)
         else:
             framename = frame
             fsp = FrameAnnotation(lex_unit, framename, sentann)
-        fsp = FrameAnnotation(lex_unit, framename, sentann, frameid, lex_unit_id)
 
         for layer in anno.findall('fn:layer', ns):  # not a real loop
             layertype = layer.attrib["name"]
@@ -323,7 +323,7 @@ def process_lu_xml(lufname, all_exemplars, dev_annos, test_annos):
         sent_id = int(sent.attrib["ID"])
         logger.write("sentence:\t" + str(sent_id) + "\n")
 
-        sentann, senttext = process_sent(sent, trainsentf, isfirstsent, sent_id, {})
+        sentann, senttext = process_sent(sent, trainsentf, isfirstsent, str(sent_id), [])
         isfirstsent = False
 
         if sentann is None:
