@@ -146,7 +146,7 @@ def process_sent(sent, outsentf, isfirstsent, sentenceid='-1', framemetadata=[])
     return sentann, senttext
 
 
-def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, corpus):
+def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, corpus, frame_id='', lex_unit_id=''):
     numannosets = 0
     fsps = {}
     fspset = set([])
@@ -176,7 +176,7 @@ def get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, isfulltextann, c
             fsp = FrameAnnotation(lex_unit, framename, sentann, frameid, lex_unit_id)
         else:
             framename = frame
-            fsp = FrameAnnotation(lex_unit, framename, sentann)
+            fsp = FrameAnnotation(lex_unit, framename, sentann, frame_id, lex_unit_id)
 
         for layer in anno.findall('fn:layer', ns):  # not a real loop
             layertype = layer.attrib["name"]
@@ -262,7 +262,7 @@ def get_annoids(filelist, outf, outsentf):
                 continue
 
             # get all the different FSP annotations in the sentence
-            x, fspno, fsps = get_all_fsps_in_sent(sentence, sentann, fspno, None, None, True, outf)
+            x, fspno, fsps = get_all_fsps_in_sent(sent=sentence, sentann=sentann, fspno=fspno, lex_unit=None, frame=None, isfulltextann=True, corpus=outf, frame_id=None, lex_unit_id=None)
             totfsps += len(fsps)
             if len(fsps) == 0: invalidsents += 1
             if sentann.text in sents:
@@ -314,7 +314,16 @@ def process_lu_xml(lufname, all_exemplars, dev_annos, test_annos):
     ns = {'fn': 'http://framenet.icsi.berkeley.edu'}
 
     frame = root.attrib["frame"]
+    frame_id = root.attrib["frameID"]
     lex_unit = root.attrib["name"]
+    lex_unit_id = root.attrib["ID"]
+    frameannometadata = [ {
+        'luID' : lex_unit_id, 
+        'luName' : lex_unit,
+        'frameID' : frame_id,
+        'frameName' : frame,
+        'source' : lufname,
+     } ]
     logger.write("\n" + lufname + "\t" + frame + "\t" + lex_unit + "\n")
 
     sentno = 0
@@ -324,7 +333,7 @@ def process_lu_xml(lufname, all_exemplars, dev_annos, test_annos):
         sent_id = int(sent.attrib["ID"])
         logger.write("sentence:\t" + str(sent_id) + "\n")
 
-        sentann, senttext = process_sent(sent, trainsentf, isfirstsent, str(sent_id), [])
+        sentann, senttext = process_sent(sent, trainsentf, isfirstsent, str(sent_id), frameannometadata)
         isfirstsent = False
 
         if sentann is None:
@@ -332,15 +341,15 @@ def process_lu_xml(lufname, all_exemplars, dev_annos, test_annos):
             continue
 
         # get all the different FSP annotations in the sentence
-        numannosets, fspno, fsps = get_all_fsps_in_sent(sent, sentann, fspno, lex_unit, frame, False, "exemplartrain")
+        numannosets, fspno, fsps = get_all_fsps_in_sent(sent=sent, sentann=sentann, fspno=fspno, lex_unit=lex_unit, frame=frame, isfulltextann=False, corpus="exemplartrain", frame_id=frame_id, lex_unit_id=lex_unit_id)
         for anno_id in fsps:
             if anno_id in test_annos or anno_id in dev_annos:
                 continue
             else:
                 if sent_id in all_exemplars:
-                    all_exemplars[sent_id].append(fsps[anno_id])
+                    all_exemplars[sent_id].append((fsps[anno_id], frameannometadata))
                 else:
-                    all_exemplars[sent_id] = [fsps[anno_id]]
+                    all_exemplars[sent_id] = [(fsps[anno_id], frameannometadata)]
                 sizes[trainf] += 1
 
         if numannosets > 2:
@@ -377,8 +386,9 @@ def process_exemplars(dev_annos, test_annos):
     sys.stderr.write("\nWriting %d exemplars to %s ...\n" % (total_exemplars, trainf))
     isfirst = True
     for write_id, sentid in enumerate(sorted(all_exemplars), 1):
-        for fsp_ in all_exemplars[sentid]:
-            write_to_conll(trainf, fsp_, isfirst, sentid=write_id, sentenceplain='', framenet_sentenceid='', source='')
+        for (fsp_, frameannometadata) in all_exemplars[sentid]:
+            source = ';'.join([m['source'] for m in frameannometadata])
+            write_to_conll(trainf, fsp_, isfirst, sentid=write_id, sentenceplain=fsp_.sent.text, framenet_sentenceid=sentid, source=source)
             isfirst = False
 
     sys.stderr.write("\n\n# total LU sents = %d \n" % (totsents))
